@@ -1,3 +1,5 @@
+mod bindings;
+
 #[cfg(test)]
 mod tests {
     #[test]
