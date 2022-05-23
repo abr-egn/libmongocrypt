@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn crypt_init_and_status() {
+    fn crypt_lifecycle() {
         unsafe {
             let crypt = mongocrypt_new();
             crypt_stub_setopt(crypt);
@@ -144,6 +144,23 @@ mod tests {
             assert_eq!(ptr::null(), mongocrypt_csfle_version_string(crypt, ptr::null_mut()));
             assert_eq!(0, mongocrypt_csfle_version(crypt));
 
+            mongocrypt_destroy(crypt);
+        }
+    }
+
+    #[test]
+    fn ctx_lifecycle() {
+        unsafe {
+            let crypt = mongocrypt_new();
+            crypt_stub_setopt(crypt);
+            assert!(mongocrypt_init(crypt));
+
+            let ctx = mongocrypt_ctx_new(crypt);
+            let status = mongocrypt_status_new();
+            assert!(mongocrypt_ctx_status(ctx, status));
+            assert!(mongocrypt_status_ok(status));
+
+            mongocrypt_ctx_destroy(ctx);
             mongocrypt_destroy(crypt);
         }
     }
