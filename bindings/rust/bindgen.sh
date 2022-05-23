@@ -2,7 +2,7 @@
 
 cd ../..
 mkdir cmake-build
-cmake . -Bcmake-build
+cmake -DENABLE_SHARED_BSON=ON . -Bcmake-build
 bindgen cmake-build/src/mongocrypt.h \
     -o bindings/rust/src/bindings.rs \
     --allowlist-function 'mongocrypt_.*' \
