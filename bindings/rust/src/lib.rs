@@ -89,8 +89,7 @@ mod tests {
 
             assert!(mongocrypt_setopt_kms_providers(crypt, doc_bin));
             assert!(mongocrypt_setopt_schema_map(crypt, doc_bin));
-            // TODO(aegnor): doesn't link
-            // assert!(mongocrypt_setopt_encrypted_field_config_map(crypt, doc_bin));
+            assert!(mongocrypt_setopt_encrypted_field_config_map(crypt, doc_bin));
 
             mongocrypt_binary_destroy(doc_bin);
             drop(doc_bytes);  // enforce lifespan longer than `doc_bin`
@@ -103,30 +102,47 @@ mod tests {
                 crypt,
                 cs(b"$ORIGIN\0").as_ptr(),
             );
-            // TODO(aegnor): doesn't link
-            // mongocrypt_setopt_use_need_kms_credentials_state(crypt);
+            mongocrypt_setopt_use_need_kms_credentials_state(crypt);
 
             mongocrypt_destroy(crypt);
         }
+    }
+
+    unsafe fn crypt_stub_setopt(crypt: *mut mongocrypt_t) {
+        assert!(mongocrypt_setopt_kms_provider_aws(
+            crypt,
+            cs(b"example\0").as_ptr(),
+            -1,
+            cs(b"example\0").as_ptr(),
+            -1,
+        ));
     }
 
     #[test]
     fn crypt_init_and_status() {
         unsafe {
             let crypt = mongocrypt_new();
-            assert!(mongocrypt_setopt_kms_provider_aws(
-                crypt,
-                cs(b"example\0").as_ptr(),
-                -1,
-                cs(b"example\0").as_ptr(),
-                -1,
-            ));
+            crypt_stub_setopt(crypt);
             assert!(mongocrypt_init(crypt));
 
             let status = mongocrypt_status_new();
             assert!(mongocrypt_status(crypt, status));
             assert!(mongocrypt_status_ok(status));
             mongocrypt_status_destroy(status);
+
+            mongocrypt_destroy(crypt);
+        }
+    }
+
+    #[test]
+    fn crypt_csfle_version() {
+        unsafe {
+            let crypt = mongocrypt_new();
+            crypt_stub_setopt(crypt);
+            assert!(mongocrypt_init(crypt));
+
+            assert_eq!(ptr::null(), mongocrypt_csfle_version_string(crypt, ptr::null_mut()));
+            assert_eq!(0, mongocrypt_csfle_version(crypt));
 
             mongocrypt_destroy(crypt);
         }
