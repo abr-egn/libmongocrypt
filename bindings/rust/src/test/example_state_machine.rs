@@ -31,9 +31,10 @@ struct BinaryBuffer {
 impl BinaryBuffer {
     fn read_json_as_bson<P: AsRef<Path>>(path: P) -> BinaryBuffer {
         let file = File::open(path).unwrap();
-        let doc = Document::from_reader(file).unwrap();
+        let json: serde_json::Value = serde_json::from_reader(file).unwrap();
+        let bson = Bson::try_from(json).unwrap();
         let mut bytes = Vec::new();
-        doc.to_writer(&mut bytes).unwrap();
+        bson.as_document().unwrap().to_writer(&mut bytes).unwrap();
         let binary = unsafe {
             let ptr = bytes.as_mut_ptr() as *mut u8;
             mongocrypt_binary_new_from_data(ptr, bytes.len() as u32)
