@@ -22,6 +22,16 @@ unsafe fn with_slice_as_binary<T>(slice: &mut [u8], f: impl FnOnce(*mut mongocry
     out
 }
 
+fn load_doc_from_json<P: AsRef<Path>>(path: P) -> Document {
+    let file = File::open(path).unwrap();
+    let json: serde_json::Value = serde_json::from_reader(file).unwrap();
+    let bson = Bson::try_from(json).unwrap();
+    match bson {
+        Bson::Document(doc) => doc,
+        _ => panic!("unexpected bson type"),
+    }
+}
+
 struct BinaryBuffer {
     #[allow(dead_code)]
     bytes: Vec<u8>,
@@ -30,11 +40,9 @@ struct BinaryBuffer {
 
 impl BinaryBuffer {
     fn read_json_as_bson<P: AsRef<Path>>(path: P) -> BinaryBuffer {
-        let file = File::open(path).unwrap();
-        let json: serde_json::Value = serde_json::from_reader(file).unwrap();
-        let bson = Bson::try_from(json).unwrap();
+        let doc = load_doc_from_json(path);
         let mut bytes = Vec::new();
-        bson.as_document().unwrap().to_writer(&mut bytes).unwrap();
+        doc.to_writer(&mut bytes).unwrap();
         let binary = unsafe {
             let ptr = bytes.as_mut_ptr() as *mut u8;
             mongocrypt_binary_new_from_data(ptr, bytes.len() as u32)
@@ -195,8 +203,7 @@ fn run() {
 
         println!("******* EXPLICIT ENCRYPTION *******");
         let ctx = mongocrypt_ctx_new(crypt);
-        let file = File::open("../../test/example/key-document.json").unwrap();
-        let mut key_doc = Document::from_reader(file).unwrap();
+        let mut key_doc = load_doc_from_json("../../test/example/key-document.json");
         let key_bytes = match key_doc.get_mut("_id").unwrap() {
             Bson::Binary(bson::Binary { bytes, .. }) => bytes,
             _ => panic!("non-binary bson"),
