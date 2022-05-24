@@ -29,15 +29,37 @@ struct BinaryBuffer {
 }
 
 impl BinaryBuffer {
-    fn read<P: AsRef<Path>>(path: P) -> std::io::Result<BinaryBuffer> {
-        let mut file = File::open(path)?;
+    fn read_json_as_bson<P: AsRef<Path>>(path: P) -> BinaryBuffer {
+        let file = File::open(path).unwrap();
+        let doc = Document::from_reader(file).unwrap();
         let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)?;
+        doc.to_writer(&mut bytes).unwrap();
         let binary = unsafe {
             let ptr = bytes.as_mut_ptr() as *mut u8;
             mongocrypt_binary_new_from_data(ptr, bytes.len() as u32)
         };
-        Ok(BinaryBuffer { bytes, binary })
+        BinaryBuffer { bytes, binary }
+    }
+
+    fn read_http<P: AsRef<Path>>(path: P) -> BinaryBuffer {
+        let mut file = File::open(path).unwrap();
+        let mut contents = vec![];
+        file.read_to_end(&mut contents).unwrap();
+
+        /* Copy and fix newlines: \n becomes \r\n. */
+        let mut bytes = vec![];
+        for i in 0..contents.len() {
+            if contents[i] == b'\n' && contents[i-1] != b'\r' {
+                bytes.push(b'\r');
+            }
+            bytes.push(contents[i]);
+        }
+
+        let binary = unsafe {
+            let ptr = bytes.as_mut_ptr() as *mut u8;
+            mongocrypt_binary_new_from_data(ptr, bytes.len() as u32)
+        };
+        BinaryBuffer { bytes, binary }
     }
 }
 
@@ -57,7 +79,7 @@ unsafe fn run_state_machine(ctx: *mut mongocrypt_ctx_t) -> Document {
                 assert!(mongocrypt_ctx_mongo_op(ctx, output));
                 println!("\nrunning listCollections on mongod with this filter:\n{:?}", doc_from_binary(output));
                 mongocrypt_binary_destroy(output);
-                let input = BinaryBuffer::read("../../test/example/collection-info.json").unwrap();
+                let input = BinaryBuffer::read_json_as_bson("../../test/example/collection-info.json");
                 println!("\nmocking reply from file:\n{:?}", doc_from_binary(input.binary));
                 assert!(mongocrypt_ctx_mongo_feed(ctx, input.binary));
                 assert!(mongocrypt_ctx_mongo_done(ctx));
@@ -67,7 +89,7 @@ unsafe fn run_state_machine(ctx: *mut mongocrypt_ctx_t) -> Document {
                 assert!(mongocrypt_ctx_mongo_op(ctx, output));
                 println!("\nrunning cmd on mongocryptd with this schema:\n{:?}", doc_from_binary(output));
                 mongocrypt_binary_destroy(output);
-                let input = BinaryBuffer::read("../../test/example/mongocryptd-reply.json").unwrap();
+                let input = BinaryBuffer::read_json_as_bson("../../test/example/mongocryptd-reply.json");
                 println!("\nmocking reply from file:\n{:?}", doc_from_binary(input.binary));
                 assert!(mongocrypt_ctx_mongo_feed(ctx, input.binary));
                 assert!(mongocrypt_ctx_mongo_done(ctx));
@@ -77,7 +99,7 @@ unsafe fn run_state_machine(ctx: *mut mongocrypt_ctx_t) -> Document {
                 assert!(mongocrypt_ctx_mongo_op(ctx, output));
                 println!("\nrunning a find on the key vault coll with this filter:\n{:?}", doc_from_binary(output));
                 mongocrypt_binary_destroy(output);
-                let input = BinaryBuffer::read("../../test/example/key-document.json").unwrap();
+                let input = BinaryBuffer::read_json_as_bson("../../test/example/key-document.json");
                 println!("\nmocking reply from file:\n{:?}", doc_from_binary(input.binary));
                 assert!(mongocrypt_ctx_mongo_feed(ctx, input.binary));
                 assert!(mongocrypt_ctx_mongo_done(ctx));
@@ -92,7 +114,7 @@ unsafe fn run_state_machine(ctx: *mut mongocrypt_ctx_t) -> Document {
                         println!("sending the following to kms:\n{:?}", str::from_utf8(slice).unwrap());
                     });
                     mongocrypt_binary_destroy(output);
-                    let input = BinaryBuffer::read("../../test/example/kms-decrypt-reply.txt").unwrap();
+                    let input = BinaryBuffer::read_http("../../test/example/kms-decrypt-reply.txt");
                     println!("mocking reply from file:\n{:?}", str::from_utf8(&input.bytes).unwrap());
                     assert!(mongocrypt_kms_ctx_feed(kms, input.binary));
                     assert_eq!(0, mongocrypt_kms_ctx_bytes_needed(kms));
@@ -154,7 +176,7 @@ fn run() {
 
         println!("******* ENCRYPTION *******");
         let ctx = mongocrypt_ctx_new(crypt);
-        let msg = BinaryBuffer::read("../../test/example/cmd.json").unwrap();
+        let msg = BinaryBuffer::read_json_as_bson("../../test/example/cmd.json");
         mongocrypt_ctx_encrypt_init(ctx, cs(b"test\0"), -1, msg.binary);
         drop(msg);
         let result = run_state_machine(ctx);
