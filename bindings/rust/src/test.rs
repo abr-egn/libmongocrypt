@@ -1,3 +1,5 @@
+mod example_state_machine;
+
 use std::{ffi::CStr, ptr};
 
 use super::*;
